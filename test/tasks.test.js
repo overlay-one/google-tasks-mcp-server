@@ -1,5 +1,5 @@
 import { describe, it, beforeEach, afterEach, mock, expect } from 'node:test';
-import { TaskActions, TaskResources } from '../src/Tasks.js';
+import { TaskActions, TaskResources } from '../dist/Tasks.js';
 
 // Mock the Google Tasks API client
 const mockTasksClient = {

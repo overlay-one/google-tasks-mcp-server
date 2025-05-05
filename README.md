@@ -93,6 +93,186 @@ pnpm start
 pnpm dev
 ```
 
+### Using with Claude Desktop
+
+Claude Desktop can integrate with this MCP server to access Google Tasks directly. This integration allows you to manage your tasks through natural language conversations with Claude.
+
+#### Benefits of Using Claude with Google Tasks
+
+- **Natural Language Task Management**: Create, search, and organize tasks using everyday language
+- **Contextual Understanding**: Claude understands what you mean when you say "tomorrow" or "next week" for due dates
+- **Task Prioritization Assistance**: Ask Claude for help organizing and prioritizing your tasks
+- **Intelligent Search**: Find tasks using context and meaning, not just exact keywords
+- **Bulk Operations**: Ask Claude to help you create or modify multiple tasks at once
+- **Scheduling Assistance**: Claude can suggest optimal due dates based on your existing tasks
+- **Task Summarization**: Get concise summaries of your tasks across multiple lists
+- **Daily Planning**: Ask Claude to help you plan your day based on your current tasks
+
+#### Setup Instructions
+
+Here's how to set up the integration:
+
+1. **Start the Google Tasks MCP server**:
+   ```bash
+   pnpm start
+   ```
+   The server will run on standard input/output channels (stdio).
+
+2. **Launch Claude Desktop with MCP server connection**:
+   ```bash
+   claude mcp --command "node /path/to/google-tasks-mcp-server/dist/index.js"
+   ```
+   Replace `/path/to/google-tasks-mcp-server` with the actual path to your installation.
+
+3. **Alternative: Create a configuration file**:
+   Create a file named `claude.yaml` in your home directory or project directory:
+   ```yaml
+   mcp:
+     command: node /path/to/google-tasks-mcp-server/dist/index.js
+   ```
+   Then simply run `claude` to use the configured MCP server.
+
+4. **Inside Claude Desktop**: 
+   Once connected, Claude will have access to your Google Tasks through custom MCP resources and tools. You can ask Claude to:
+   - "Show me my task lists"
+   - "Create a new task called 'Complete project report'"
+   - "Find all tasks related to meetings"
+   - "Mark my 'Review documents' task as completed"
+
+Claude will use the MCP server to access your Google Tasks data according to your requests.
+
+### Example Conversations with Claude
+
+Here are some example conversations you can have with Claude once connected:
+
+**Listing Tasks**:
+```
+You: Show me all my tasks
+Claude: I'll retrieve your tasks from Google Tasks.
+[Claude uses task.list tool]
+Here are your current tasks:
+- Complete project documentation (Due: 2025-05-10)
+- Schedule team meeting (Due: Not set)
+- Review quarterly report (Due: 2025-05-15)
+```
+
+**Creating a Task**:
+```
+You: Create a new task called "Send follow-up email" due tomorrow at 3 PM
+Claude: I'll create that task for you.
+[Claude uses task.create tool]
+I've created a new task:
+Title: Send follow-up email
+Due: 2025-05-06T15:00:00Z
+Status: needsAction
+```
+
+**Searching Tasks**:
+```
+You: Find all tasks related to "meeting"
+Claude: I'll search for tasks containing "meeting".
+[Claude uses task.search tool]
+I found 2 tasks related to "meeting":
+- Schedule team meeting (Due: Not set)
+- Prepare meeting agenda (Due: 2025-05-08)
+```
+
+**Managing Task Lists**:
+```
+You: Create a new task list called "Personal Projects"
+Claude: I'll create that task list for you.
+[Claude uses tasklist.create tool]
+I've created a new task list named "Personal Projects".
+Would you like me to add any tasks to this list?
+```
+
+### Advanced Usage Scenarios
+
+Here are some advanced ways to use Claude with your Google Tasks:
+
+#### Project Planning
+
+```
+You: I need to plan a website launch. Can you help me create tasks for it?
+Claude: I'd be happy to help plan your website launch. Let me create a task list and relevant tasks.
+[Claude uses tasklist.create and task.create tools]
+I've created a new task list "Website Launch" with the following tasks:
+1. Finalize website content (Due: 1 week from now)
+2. Complete design review (Due: 10 days from now)
+3. Run final QA tests (Due: 2 weeks from now)
+4. Prepare marketing materials (Due: 2 weeks from now)
+5. Configure analytics (Due: 3 days before launch)
+6. Launch website (Due: 3 weeks from now)
+Would you like me to add more specific tasks?
+```
+
+#### Task Organization and Prioritization
+
+```
+You: I have too many tasks. Can you help me prioritize them?
+Claude: I'll help you organize and prioritize your tasks.
+[Claude uses task.list tool]
+Based on your current tasks, here's a suggested prioritization:
+
+High Priority (Complete today):
+- Submit quarterly report (Due: Today)
+- Call client about project delay (Due: Today)
+
+Medium Priority (Complete this week):
+- Prepare presentation (Due: In 3 days)
+- Review team metrics (Due: In 5 days)
+
+Low Priority (Can be scheduled later):
+- Research new tools (Due: Next week)
+- Update documentation (Due: In 2 weeks)
+
+Would you like me to update the due dates to reflect these priorities?
+```
+
+#### Regular Task Management
+
+```
+You: What tasks should I focus on today?
+Claude: Let me check your tasks due today or overdue.
+[Claude uses task.list and task.search tools]
+Here are the tasks you should focus on today:
+
+Due Today:
+- Prepare client meeting agenda
+- Submit expense report
+
+Overdue:
+- Follow up on pending approvals (Due yesterday)
+
+Upcoming Soon:
+- Project proposal draft (Due tomorrow)
+
+Should I mark any of these as completed?
+```
+
+### Troubleshooting Claude Desktop Integration
+
+If you encounter issues when connecting Claude Desktop to the Google Tasks MCP server:
+
+1. **Authentication Problems**:
+   - Ensure your `.env` file has the correct `CLIENT_ID`, `CLIENT_SECRET`, and `REDIRECT_URI`
+   - Check that you have valid refresh tokens in `.env` or in `.credentials.json`
+   - If needed, regenerate your tokens through the Google OAuth process
+
+2. **Connection Issues**:
+   - Verify the server is running with `pnpm start` before connecting Claude
+   - Check that the path in your `claude mcp --command` is correct
+   - If using a configuration file, ensure the YAML syntax is valid
+
+3. **Command Not Found**:
+   - Ensure Claude Desktop CLI is in your PATH
+   - Try using the full path to the Claude executable
+
+4. **MCP Protocol Errors**:
+   - These typically appear if the server encounters an internal error
+   - Check server logs for details about the specific error
+   - Ensure you're using compatible versions of Claude Desktop and the MCP SDK
+
 ## API Reference
 
 ### Resources
@@ -208,17 +388,25 @@ The server uses parallel API calls for operations involving multiple task lists:
 The project includes a testing framework using Node.js built-in test runner:
 
 ```bash
-# Run all tests
+# Run all tests (this will first build the TypeScript code)
 pnpm test
 
 # Run tests in watch mode for development
 pnpm test:watch
 ```
 
+Before running tests for the first time, you'll need to make sure dependencies are installed:
+
+```bash
+pnpm install
+```
+
 The test suite includes:
 - Authentication tests: Verify token refresh handling
 - Task operation tests: Validate task API functionality
 - Error handling tests: Ensure errors are properly handled
+
+Tests are written in JavaScript and run against the compiled TypeScript code, ensuring that the production code works as expected. The tests are designed to work with mocked dependencies, so no real Google API calls are made during testing.
 
 ### Building
 

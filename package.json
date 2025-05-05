@@ -8,8 +8,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsc -w & node --watch dist/index.js",
-    "test": "node --test test/*.test.js",
-    "test:watch": "node --test --watch test/*.test.js"
+    "test": "tsc && node --test test/*.test.js",
+    "test:watch": "tsc && node --test --watch test/*.test.js"
   },
   "repository": {
     "type": "git",
@@ -29,6 +29,7 @@
     "@modelcontextprotocol/sdk": "^1.11.0",
     "dotenv": "^16.5.0",
     "gaxios": "^6.1.1",
+    "google-auth-library": "^9.6.3",
     "googleapis": "^148.0.0"
   },
   "devDependencies": {
