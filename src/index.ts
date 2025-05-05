@@ -105,7 +105,7 @@ class TasksServer {
 
   private setupTokenRefreshHandler(): void {
     // Add a listener for token refresh events
-    this.oAuth2Client.on('tokens', (tokens) => {
+    this.oAuth2Client.on('tokens', (tokens: {access_token?: string, refresh_token?: string}) => {
       console.log('Token refreshed');
       
       // If we have new access token, update credentials

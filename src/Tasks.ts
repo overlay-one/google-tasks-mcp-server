@@ -58,9 +58,9 @@ function handleApiError(error: any, operation: string, errorCode: ErrorCode = Er
     if (status === 400) {
       throw new McpError(ErrorCode.InvalidParams, `Invalid request parameters: ${errorData?.error?.message || 'Unknown error'}`);
     } else if (status === 401 || status === 403) {
-      throw new McpError(ErrorCode.PermissionDenied, `Authentication error: ${errorData?.error?.message || 'Access denied'}`);
+      throw new McpError(ErrorCode.InvalidRequest, `Authentication error: ${errorData?.error?.message || 'Access denied'}`);
     } else if (status === 404) {
-      throw new McpError(ErrorCode.NotFound, `Resource not found: ${errorData?.error?.message || 'Resource does not exist'}`);
+      throw new McpError(ErrorCode.InvalidRequest, `Resource not found: ${errorData?.error?.message || 'Resource does not exist'}`);
     }
   }
   
@@ -107,7 +107,7 @@ export class TaskListResources {
 
       return response.data;
     } catch (error) {
-      handleApiError(error, `reading task list '${taskListId}'`, ErrorCode.NotFound);
+      handleApiError(error, `reading task list '${taskListId}'`, ErrorCode.InvalidRequest);
     }
   }
 }
@@ -127,7 +127,7 @@ export class TaskResources {
         });
         return taskResponse.data;
       } catch (error) {
-        handleApiError(error, `reading task '${specificTaskId}' in list '${taskListId}'`, ErrorCode.NotFound);
+        handleApiError(error, `reading task '${specificTaskId}' in list '${taskListId}'`, ErrorCode.InvalidRequest);
       }
     }
 
@@ -161,7 +161,7 @@ export class TaskResources {
 
       if (!task) {
         // If we've searched all lists and found nothing, throw a not found error
-        throw new McpError(ErrorCode.NotFound, `Task '${taskId}' not found in any task list`);
+        throw new McpError(ErrorCode.InvalidRequest, `Task '${taskId}' not found in any task list`);
       }
 
       return task;
@@ -452,7 +452,15 @@ export class TaskActions {
   }
 
   static async create(request: CallToolRequest, tasks: tasks_v1.Tasks) {
-    const params = request.params.arguments as TaskCreateParams;
+    const args = request.params.arguments || {};
+    const params: TaskCreateParams = { 
+      title: (args.title as string) || '',
+      taskListId: (args.taskListId as string) || undefined,
+      notes: (args.notes as string) || undefined,
+      due: (args.due as string) || undefined,
+      status: (args.status as 'needsAction' | 'completed') || undefined,
+      parent: (args.parent as string) || undefined
+    };
     
     if (!params?.title) {
       throw new McpError(ErrorCode.InvalidParams, "Task title is required");
