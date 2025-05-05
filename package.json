@@ -1,9 +1,12 @@
 {
   "name": "@overlay-one/google-tasks-mcp-server",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Google Tasks MCP Server",
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "google-tasks-mcp-server": "dist/index.js"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
