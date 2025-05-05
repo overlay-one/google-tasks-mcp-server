@@ -1,0 +1,37 @@
+{
+  "name": "google-tasks-mcp-server",
+  "version": "0.0.1",
+  "description": "Google Tasks MCP Server",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc -w & node --watch dist/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/overlay-one/google-tasks-mcp-server.git"
+  },
+  "keywords": [
+    "Google Tasks",
+    "MCP"
+  ],
+  "author": "lsgrep",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/overlay-one/google-tasks-mcp-server/issues"
+  },
+  "homepage": "https://github.com/overlay-one/google-tasks-mcp-server#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.11.0",
+    "dotenv": "^16.5.0",
+    "gaxios": "^6.1.1",
+    "googleapis": "^148.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.19",
+    "typescript": "^5.3.3"
+  }
+}
