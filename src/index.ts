@@ -75,10 +75,45 @@ class TasksServer {
       process.exit(1);
     }
 
+    // Set up token refresh handler
+    this.setupTokenRefreshHandler();
+
     // Initialize the tasks client
     this.tasks = google.tasks({
       version: GOOGLE_TASKS_API_VERSION,
       auth: this.oAuth2Client,
+    });
+  }
+
+  private setupTokenRefreshHandler(): void {
+    // Add a listener for token refresh events
+    this.oAuth2Client.on('tokens', (tokens) => {
+      console.log('Token refreshed');
+      
+      // If we have new access token, update credentials
+      if (tokens.access_token) {
+        // Get current credentials
+        const credentials = this.oAuth2Client.credentials || {};
+        
+        // Update with new tokens
+        const updatedCredentials = {
+          ...credentials,
+          ...tokens
+        };
+        
+        // Update OAuth client with new credentials
+        this.oAuth2Client.setCredentials(updatedCredentials);
+        
+        // Save updated credentials to file
+        if (fs.existsSync(CREDENTIALS_PATH)) {
+          try {
+            fs.writeFileSync(CREDENTIALS_PATH, JSON.stringify(updatedCredentials, null, 2));
+            console.log('Updated credentials saved to file');
+          } catch (error) {
+            console.error('Error saving updated credentials:', error);
+          }
+        }
+      }
     });
   }
 

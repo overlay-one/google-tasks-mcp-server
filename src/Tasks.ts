@@ -5,8 +5,50 @@ import {
   ErrorCode,
   McpError
 } from "@modelcontextprotocol/sdk/types.js";
-import { GaxiosResponse } from "gaxios";
+import { GaxiosResponse, GaxiosError } from "gaxios";
 import { google, tasks_v1 } from "googleapis";
+import {
+  TaskListResource,
+  TaskResource,
+  TaskListRequestParams,
+  TaskRequestParams,
+  TaskSearchParams,
+  TaskCreateParams,
+  TaskUpdateParams,
+  TaskMoveParams,
+  TaskGetParams,
+  TaskDeleteParams,
+  TaskClearParams,
+  TaskListCreateParams,
+  TaskListUpdateParams,
+  TaskListGetParams,
+  TaskListDeleteParams,
+  TasksClient
+} from "./types.js";
+
+// Helper function to handle API errors consistently
+function handleApiError(error: any, operation: string, errorCode: ErrorCode = ErrorCode.InternalError): never {
+  console.error(`Error in ${operation}:`, error);
+  
+  // Handle GaxiosError specially to extract meaningful error data
+  if (error && (error as GaxiosError).response) {
+    const gaxiosError = error as GaxiosError;
+    const status = gaxiosError.response?.status;
+    const errorData = gaxiosError.response?.data;
+    
+    // Map HTTP error codes to MCP error codes
+    if (status === 400) {
+      throw new McpError(ErrorCode.InvalidParams, `Invalid request parameters: ${errorData?.error?.message || 'Unknown error'}`);
+    } else if (status === 401 || status === 403) {
+      throw new McpError(ErrorCode.PermissionDenied, `Authentication error: ${errorData?.error?.message || 'Access denied'}`);
+    } else if (status === 404) {
+      throw new McpError(ErrorCode.NotFound, `Resource not found: ${errorData?.error?.message || 'Resource does not exist'}`);
+    }
+  }
+  
+  // For other types of errors, use the provided error code
+  throw new McpError(errorCode, `Failed during ${operation}: ${error.message || error}`);
+}
 
 const MAX_TASK_RESULTS = 100;
 const MAX_TASKLIST_RESULTS = 100;
@@ -32,8 +74,7 @@ export class TaskListResources {
 
       return [taskLists, nextPageToken];
     } catch (error) {
-      console.error("Error listing task lists:", error);
-      throw new McpError(ErrorCode.InternalError, `Failed to list task lists: ${error}`);
+      handleApiError(error, "listing task lists");
     }
   }
 
@@ -48,8 +89,7 @@ export class TaskListResources {
 
       return response.data;
     } catch (error) {
-      console.error("Error reading task list:", error);
-      throw new McpError(ErrorCode.InvalidRequest, `Task list not found: ${error}`);
+      handleApiError(error, `reading task list '${taskListId}'`, ErrorCode.NotFound);
     }
   }
 }
@@ -69,40 +109,51 @@ export class TaskResources {
         });
         return taskResponse.data;
       } catch (error) {
-        throw new McpError(ErrorCode.InvalidRequest, `Task not found: ${error}`);
+        handleApiError(error, `reading task '${specificTaskId}' in list '${taskListId}'`, ErrorCode.NotFound);
       }
     }
 
     // Otherwise search in all task lists
-    const taskListsResponse: GaxiosResponse<tasks_v1.Schema$TaskLists> =
-      await tasks.tasklists.list({
-        maxResults: MAX_TASKLIST_RESULTS,
-      });
+    try {
+      const taskListsResponse: GaxiosResponse<tasks_v1.Schema$TaskLists> =
+        await tasks.tasklists.list({
+          maxResults: MAX_TASKLIST_RESULTS,
+        });
 
-    const taskLists = taskListsResponse.data.items || [];
-    let task: tasks_v1.Schema$Task | null = null;
+      const taskLists = taskListsResponse.data.items || [];
+      let task: tasks_v1.Schema$Task | null = null;
+      let lastError: any = null;
 
-    for (const taskList of taskLists) {
-      if (taskList.id) {
-        try {
-          const taskResponse: GaxiosResponse<tasks_v1.Schema$Task> =
-            await tasks.tasks.get({
-              tasklist: taskList.id,
-              task: taskId,
-            });
-          task = taskResponse.data;
-          break;
-        } catch (error) {
-          // Task not found in this list, continue to the next one
+      for (const taskList of taskLists) {
+        if (taskList.id) {
+          try {
+            const taskResponse: GaxiosResponse<tasks_v1.Schema$Task> =
+              await tasks.tasks.get({
+                tasklist: taskList.id,
+                task: taskId,
+              });
+            task = taskResponse.data;
+            break;
+          } catch (error) {
+            // Store the last error, but continue searching in other lists
+            lastError = error;
+          }
         }
       }
-    }
 
-    if (!task) {
-      throw new McpError(ErrorCode.InvalidRequest, "Task not found");
-    }
+      if (!task) {
+        // If we've searched all lists and found nothing, throw a not found error
+        throw new McpError(ErrorCode.NotFound, `Task '${taskId}' not found in any task list`);
+      }
 
-    return task;
+      return task;
+    } catch (error) {
+      // Handle errors that could happen during the task lists listing
+      if (error instanceof McpError) {
+        throw error; // Rethrow existing McpError
+      }
+      handleApiError(error, `searching for task '${taskId}'`);
+    }
   }
 
   static async list(
@@ -117,37 +168,62 @@ export class TaskResources {
     if (request.params?.cursor) {
       params.pageToken = request.params.cursor;
     }
+    
+    try {
+      // Get all task lists first
+      const taskListsResponse = await tasks.tasklists.list({
+        maxResults: MAX_TASKLIST_RESULTS,
+      });
 
-    const taskListsResponse = await tasks.tasklists.list({
-      maxResults: MAX_TASK_RESULTS,
-    });
+      const taskLists = taskListsResponse.data.items || [];
 
-    const taskLists = taskListsResponse.data.items || [];
-
-    let allTasks: tasks_v1.Schema$Task[] = [];
-    let nextPageToken: string | null = null;
-
-    for (const taskList of taskLists) {
-      if (!taskList.id) continue;
-      
-      try {
-        const tasksResponse = await tasks.tasks.list({
-          tasklist: taskList.id,
-          ...params,
+      // Create an array of promises to fetch tasks from each task list in parallel
+      const taskPromises = taskLists
+        .filter(taskList => taskList.id) // Filter out any lists without IDs
+        .map(async (taskList) => {
+          try {
+            const tasksResponse = await tasks.tasks.list({
+              tasklist: taskList.id!,
+              ...params,
+            });
+            
+            // Return both the tasks and the next page token
+            return {
+              tasks: tasksResponse.data.items || [],
+              nextPageToken: tasksResponse.data.nextPageToken || null,
+              success: true
+            };
+          } catch (error) {
+            // Log the error but don't fail the entire operation
+            console.error(`Error fetching tasks for list ${taskList.id}:`, error);
+            return { tasks: [], nextPageToken: null, success: false };
+          }
         });
-
-        const taskItems = tasksResponse.data.items || [];
-        allTasks = allTasks.concat(taskItems);
-
-        if (tasksResponse.data.nextPageToken) {
-          nextPageToken = tasksResponse.data.nextPageToken;
+      
+      // Wait for all requests to complete
+      const results = await Promise.all(taskPromises);
+      
+      // Combine the results
+      let allTasks: tasks_v1.Schema$Task[] = [];
+      let nextPageToken: string | null = null;
+      
+      for (const result of results) {
+        if (result.success) {
+          allTasks = allTasks.concat(result.tasks);
+          
+          // If any task list has a next page token, we'll return it
+          // (This is a simplification; a more complex implementation would 
+          // need to handle pagination across multiple task lists)
+          if (result.nextPageToken) {
+            nextPageToken = result.nextPageToken;
+          }
         }
-      } catch (error) {
-        console.error(`Error fetching tasks for list ${taskList.id}:`, error);
       }
-    }
 
-    return [allTasks, nextPageToken];
+      return [allTasks, nextPageToken];
+    } catch (error) {
+      handleApiError(error, "listing tasks");
+    }
   }
 }
 
@@ -318,53 +394,63 @@ export class TaskActions {
       }
     }
     
-    // Otherwise fetch tasks from all lists
-    const taskListsResponse = await tasks.tasklists.list({
-      maxResults: MAX_TASKLIST_RESULTS,
-    });
+    try {
+      // Otherwise fetch tasks from all lists
+      const taskListsResponse = await tasks.tasklists.list({
+        maxResults: MAX_TASKLIST_RESULTS,
+      });
 
-    const taskLists = taskListsResponse.data.items || [];
-    let allTasks: tasks_v1.Schema$Task[] = [];
-
-    for (const taskList of taskLists) {
-      if (taskList.id) {
+      const taskLists = (taskListsResponse.data.items || [])
+        .filter(taskList => taskList.id); // Filter out any lists without IDs
+      
+      if (taskLists.length === 0) {
+        return [];
+      }
+      
+      // Create an array of promises to fetch tasks from each task list in parallel
+      const taskPromises = taskLists.map(async (taskList) => {
         try {
           const tasksResponse = await tasks.tasks.list({
-            tasklist: taskList.id,
+            tasklist: taskList.id!,
             maxResults: MAX_TASK_RESULTS,
           });
 
-          const items = tasksResponse.data.items || [];
-          allTasks = allTasks.concat(items);
+          return tasksResponse.data.items || [];
         } catch (error) {
           console.error(`Error fetching tasks for list ${taskList.id}:`, error);
+          return [];
         }
-      }
+      });
+      
+      // Wait for all promises to resolve
+      const results = await Promise.all(taskPromises);
+      
+      // Flatten the array of arrays into a single array of tasks
+      return results.flat();
+    } catch (error) {
+      console.error('Error listing task lists:', error);
+      return [];
     }
-    return allTasks;
   }
 
   static async create(request: CallToolRequest, tasks: tasks_v1.Tasks) {
-    const taskListId =
-      (request.params.arguments?.taskListId as string) || "@default";
-    const taskTitle = request.params.arguments?.title as string;
-    const taskNotes = request.params.arguments?.notes as string;
-    const taskStatus = request.params.arguments?.status as string;
-    const taskDue = request.params.arguments?.due as string;
-    const taskParent = request.params.arguments?.parent as string;
-
-    if (!taskTitle) {
+    const params = request.params.arguments as TaskCreateParams;
+    
+    if (!params?.title) {
       throw new McpError(ErrorCode.InvalidParams, "Task title is required");
     }
 
-    const task: any = {
-      title: taskTitle,
+    const taskListId = params.taskListId || "@default";
+    
+    // Construct task object with proper typing
+    const task: tasks_v1.Schema$Task = {
+      title: params.title,
     };
     
-    if (taskNotes) task.notes = taskNotes;
-    if (taskDue) task.due = taskDue;
-    if (taskStatus) task.status = taskStatus;
-    if (taskParent) task.parent = taskParent;
+    if (params.notes) task.notes = params.notes;
+    if (params.due) task.due = params.due;
+    if (params.status) task.status = params.status;
+    if (params.parent) task.parent = params.parent;
 
     try {
       const taskResponse = await tasks.tasks.insert({
@@ -381,7 +467,7 @@ export class TaskActions {
         ],
       };
     } catch (error) {
-      throw new McpError(ErrorCode.InternalError, `Failed to create task: ${error}`);
+      handleApiError(error, "creating task", ErrorCode.InternalError);
     }
   }
 
