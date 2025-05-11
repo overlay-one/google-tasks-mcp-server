@@ -1,6 +1,6 @@
 {
   "name": "@overlay-one/google-tasks-mcp-server",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Google Tasks MCP Server",
   "type": "module",
   "main": "dist/index.js",

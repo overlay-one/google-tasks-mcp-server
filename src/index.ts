@@ -156,7 +156,7 @@ class TasksServer {
       try {
         // Check the resource type from the URI pattern
         const uriPattern = (request.params?.uriPattern as string) || "";
-        
+
         // Handle task lists resources
         if (uriPattern.startsWith("gtasklists:///")) {
           const [taskLists, nextPageToken] = await TaskListResources.list(request, this.tasks);
@@ -169,18 +169,43 @@ class TasksServer {
             })),
             nextCursor: nextPageToken,
           };
-        } 
-        
+        }
+
         // Handle tasks resources
-        const [allTasks, nextPageToken] = await TaskResources.list(request, this.tasks);
+        if (uriPattern.startsWith("gtasks:///")) {
+          const [allTasks, nextPageToken] = await TaskResources.list(request, this.tasks);
+          return {
+            resources: allTasks.map((task) => ({
+              uri: `gtasks:///${task.id}`,
+              mimeType: "text/plain",
+              name: task.title || "Untitled Task",
+              description: task.notes || "No description",
+            })),
+            nextCursor: nextPageToken,
+          };
+        }
+
+        // If no specific pattern provided, return both task lists and tasks
+        const [taskLists, taskListsNextPageToken] = await TaskListResources.list(request, this.tasks);
+        const [allTasks, tasksNextPageToken] = await TaskResources.list(request, this.tasks);
+
         return {
-          resources: allTasks.map((task) => ({
-            uri: `gtasks:///${task.id}`,
-            mimeType: "text/plain",
-            name: task.title || "Untitled Task",
-            description: task.notes || "No description",
-          })),
-          nextCursor: nextPageToken,
+          resources: [
+            ...taskLists.map((taskList) => ({
+              uri: `gtasklists:///${taskList.id}`,
+              mimeType: "text/plain",
+              name: taskList.title || "Untitled Task List",
+              description: `Task list - Updated: ${taskList.updated || 'Unknown'}`,
+            })),
+            ...allTasks.map((task) => ({
+              uri: `gtasks:///${task.id}`,
+              mimeType: "text/plain",
+              name: task.title || "Untitled Task",
+              description: task.notes || "No description",
+            }))
+          ],
+          // Use either nextPageToken if available
+          nextCursor: taskListsNextPageToken || tasksNextPageToken,
         };
       } catch (error) {
         console.error("Error listing resources:", error);
