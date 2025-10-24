@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * Google Tasks MCP Server
  *
