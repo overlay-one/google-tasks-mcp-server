@@ -18,31 +18,14 @@
 
 import {
   CallToolRequest,
-  ListResourcesRequest,
-  ReadResourceRequest,
   ErrorCode,
-  McpError
+  ListResourcesRequest,
+  McpError,
+  ReadResourceRequest
 } from "@modelcontextprotocol/sdk/types.js";
-import { GaxiosResponse, GaxiosError } from "gaxios";
-import { google, tasks_v1 } from "googleapis";
-import {
-  TaskListResource,
-  TaskResource,
-  TaskListRequestParams,
-  TaskRequestParams,
-  TaskSearchParams,
-  TaskCreateParams,
-  TaskUpdateParams,
-  TaskMoveParams,
-  TaskGetParams,
-  TaskDeleteParams,
-  TaskClearParams,
-  TaskListCreateParams,
-  TaskListUpdateParams,
-  TaskListGetParams,
-  TaskListDeleteParams,
-  TasksClient
-} from "./types.js";
+import {GaxiosError, GaxiosResponse} from "gaxios";
+import {tasks_v1} from "googleapis";
+import {TaskCreateParams} from "./types.js";
 
 // Helper function to handle API errors consistently
 function handleApiError(error: any, operation: string, errorCode: ErrorCode = ErrorCode.InternalError): never {
@@ -254,6 +237,16 @@ export class TaskListActions {
     return taskLists.map((taskList) => this.formatTaskList(taskList)).join("\n");
   }
 
+  private static serializeTaskList(taskList: tasks_v1.Schema$TaskList) {
+    return {
+      id: taskList.id || null,
+      title: taskList.title || 'Untitled',
+      updated: taskList.updated || null,
+      selfLink: taskList.selfLink || null,
+      etag: taskList.etag || null,
+    };
+  }
+
   static async list(request: CallToolRequest, tasks: tasks_v1.Tasks) {
     try {
       const response = await tasks.tasklists.list({
@@ -267,8 +260,19 @@ export class TaskListActions {
         content: [
           {
             type: "text",
-            text: `Found ${taskLists.length} task lists:\n${formattedLists}`,
+            text: `Found ${taskLists.length} task lists`,
           },
+          {
+            type: "resource",
+            resource: {
+              uri: "gtasklists:///list-results",
+              mimeType: "application/json",
+              text: JSON.stringify({
+                count: taskLists.length,
+                taskLists: taskLists.map(tl => this.serializeTaskList(tl))
+              }, null, 2),
+            }
+          }
         ],
       };
     } catch (error) {
@@ -292,8 +296,16 @@ export class TaskListActions {
         content: [
           {
             type: "text",
-            text: this.formatTaskList(response.data),
+            text: `Task list: ${response.data.title}`,
           },
+          {
+            type: "resource",
+            resource: {
+              uri: `gtasklists:///${taskListId}`,
+              mimeType: "application/json",
+              text: JSON.stringify(this.serializeTaskList(response.data), null, 2),
+            }
+          }
         ],
       };
     } catch (error) {
@@ -321,6 +333,14 @@ export class TaskListActions {
             type: "text",
             text: `Task list created: ${response.data.title}`,
           },
+          {
+            type: "resource",
+            resource: {
+              uri: `gtasklists:///${response.data.id}`,
+              mimeType: "application/json",
+              text: JSON.stringify(this.serializeTaskList(response.data), null, 2),
+            }
+          }
         ],
       };
     } catch (error) {
@@ -354,6 +374,14 @@ export class TaskListActions {
             type: "text",
             text: `Task list updated: ${response.data.title}`,
           },
+          {
+            type: "resource",
+            resource: {
+              uri: `gtasklists:///${taskListId}`,
+              mimeType: "application/json",
+              text: JSON.stringify(this.serializeTaskList(response.data), null, 2),
+            }
+          }
         ],
       };
     } catch (error) {
@@ -394,6 +422,25 @@ export class TaskActions {
 
   private static formatTaskList(taskList: tasks_v1.Schema$Task[]) {
     return taskList.map((task) => this.formatTask(task)).join("\n");
+  }
+
+  private static serializeTask(task: tasks_v1.Schema$Task) {
+    return {
+      id: task.id || null,
+      title: task.title || 'Untitled',
+      status: task.status || 'needsAction',
+      notes: task.notes || null,
+      due: task.due || null,
+      completed: task.completed || null,
+      parent: task.parent || null,
+      position: task.position || null,
+      updated: task.updated || null,
+      hidden: task.hidden || false,
+      deleted: task.deleted || false,
+      etag: task.etag || null,
+      selfLink: task.selfLink || null,
+      links: task.links || []
+    };
   }
 
   private static async _list(tasks: tasks_v1.Tasks, taskListId?: string) {
@@ -453,7 +500,7 @@ export class TaskActions {
 
   static async create(request: CallToolRequest, tasks: tasks_v1.Tasks) {
     const args = request.params.arguments || {};
-    const params: TaskCreateParams = { 
+    const params: TaskCreateParams = {
       title: (args.title as string) || '',
       taskListId: (args.taskListId as string) || undefined,
       notes: (args.notes as string) || undefined,
@@ -461,18 +508,18 @@ export class TaskActions {
       status: (args.status as 'needsAction' | 'completed') || undefined,
       parent: (args.parent as string) || undefined
     };
-    
+
     if (!params?.title) {
       throw new McpError(ErrorCode.InvalidParams, "Task title is required");
     }
 
     const taskListId = params.taskListId || "@default";
-    
+
     // Construct task object with proper typing
     const task: tasks_v1.Schema$Task = {
       title: params.title,
     };
-    
+
     if (params.notes) task.notes = params.notes;
     if (params.due) task.due = params.due;
     if (params.status) task.status = params.status;
@@ -488,8 +535,16 @@ export class TaskActions {
         content: [
           {
             type: "text",
-            text: `Task created: ${taskResponse.data.title} in list ${taskListId}`,
+            text: `Task created: ${taskResponse.data.title}`,
           },
+          {
+            type: "resource",
+            resource: {
+              uri: `gtasks:///${taskResponse.data.id}`,
+              mimeType: "application/json",
+              text: JSON.stringify(this.serializeTask(taskResponse.data), null, 2),
+            }
+          }
         ],
       };
     } catch (error) {
@@ -511,7 +566,7 @@ export class TaskActions {
       throw new McpError(ErrorCode.InvalidParams, "Task ID is required");
     }
 
-    const task: any = {};
+    const task: Partial<tasks_v1.Schema$Task> = {};
     if (taskTitle) task.title = taskTitle;
     if (taskNotes) task.notes = taskNotes;
     if (taskStatus) task.status = taskStatus;
@@ -529,8 +584,16 @@ export class TaskActions {
         content: [
           {
             type: "text",
-            text: `Task updated: ${taskResponse.data.title} in list ${taskListId}`,
+            text: `Task updated: ${taskResponse.data.title}`,
           },
+          {
+            type: "resource",
+            resource: {
+              uri: `gtasks:///${taskId}`,
+              mimeType: "application/json",
+              text: JSON.stringify(this.serializeTask(taskResponse.data), null, 2),
+            }
+          }
         ],
       };
     } catch (error) {
@@ -540,19 +603,30 @@ export class TaskActions {
 
   static async list(request: CallToolRequest, tasks: tasks_v1.Tasks) {
     const taskListId = request.params.arguments?.taskListId as string;
-    
+
     try {
       const allTasks = await this._list(tasks, taskListId);
-      const taskList = this.formatTaskList(allTasks);
-      
+
       const listInfo = taskListId ? `in list ${taskListId}` : 'across all lists';
-      
+
       return {
         content: [
           {
             type: "text",
-            text: `Found ${allTasks.length} tasks ${listInfo}:\n${taskList}`,
+            text: `Found ${allTasks.length} tasks ${listInfo}`,
           },
+          {
+            type: "resource",
+            resource: {
+              uri: taskListId ? `gtasks:///${taskListId}/tasks` : "gtasks:///all-tasks",
+              mimeType: "application/json",
+              text: JSON.stringify({
+                count: allTasks.length,
+                taskListId: taskListId || null,
+                tasks: allTasks.map(t => this.serializeTask(t))
+              }, null, 2),
+            }
+          }
         ],
       };
     } catch (error) {
@@ -578,8 +652,16 @@ export class TaskActions {
         content: [
           {
             type: "text",
-            text: this.formatTask(response.data),
+            text: `Task: ${response.data.title}`,
           },
+          {
+            type: "resource",
+            resource: {
+              uri: `gtasks:///${taskId}`,
+              mimeType: "application/json",
+              text: JSON.stringify(this.serializeTask(response.data), null, 2),
+            }
+          }
         ],
       };
     } catch (error) {
@@ -631,15 +713,27 @@ export class TaskActions {
           task.notes?.toLowerCase().includes(userQuery.toLowerCase()),
       );
 
-      const taskList = this.formatTaskList(filteredItems);
       const listInfo = taskListId ? `in list ${taskListId}` : 'across all lists';
 
       return {
         content: [
           {
             type: "text",
-            text: `Found ${filteredItems.length} tasks matching "${userQuery}" ${listInfo}:\n${taskList}`,
+            text: `Found ${filteredItems.length} tasks matching "${userQuery}" ${listInfo}`,
           },
+          {
+            type: "resource",
+            resource: {
+              uri: `gtasks:///search?q=${encodeURIComponent(userQuery)}`,
+              mimeType: "application/json",
+              text: JSON.stringify({
+                query: userQuery,
+                count: filteredItems.length,
+                taskListId: taskListId || null,
+                tasks: filteredItems.map(t => this.serializeTask(t))
+              }, null, 2),
+            }
+          }
         ],
       };
     } catch (error) {
